@@ -1,3 +1,15 @@
+## Features and Changes
+
+- Fixed mime-type issuse for txt output
+- Fixed Git update glitches (only newer revisions are commited)
+- Added possibility to use full URL insead of DocID
+- Added possibility to work without OAuth 2.0 credentials (Only the newest revision available. Using source from a simmilar project: https://github.com/uid/gdoc-downloader )
+- Added possibility to latexmk preview
+- Added possibility to download more format at once 
+- Added Git and LaTeX friendly output formatting
+- Added continous updates and previews (default: 5 sec)
+- Future plans: Python 3.x version
+
 ## Synopsis
 
     gitdriver.py [-h] [--config CONFIG] [--text] [--html] docid
@@ -8,6 +20,10 @@
 - `--text`, `-T` -- fetch plain text content
 - `--html`, `-H` -- fetch HTML content
 - `--mime-type` -- specify arbitrary mime type
+- `--noauth` -- No OAuth 2.0 authentication (very limited usage)
+- `--preview` -- Compile latex file to PDF and preview
+- `--url` -- Use URL instead of docid
+
 
 ## Example usage:
 
@@ -53,4 +69,3 @@ The file is a simple YAML document that should look like this:
 Where `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` are replaced with the
 appropriate values from Google that you established in the previous
 step.
-
