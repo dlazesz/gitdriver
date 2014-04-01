@@ -1,16 +1,14 @@
-#!/usr/bin/python
+#!/usr/bin/python3
+# -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
 import os
-import sys
-import argparse
 import urllib
 import yaml
-import json
 import requests
 
-OAUTH_URI='https://accounts.google.com/o/oauth2'
-VALIDATE_URI='https://www.googleapis.com/oauth2/v1/tokeninfo'
-DRIVE_URI='https://www.googleapis.com/drive/v2'
+OAUTH_URI = 'https://accounts.google.com/o/oauth2'
+VALIDATE_URI = 'https://www.googleapis.com/oauth2/v1/tokeninfo'
+DRIVE_URI = 'https://www.googleapis.com/drive/v2'
 
 OAUTH_SCOPES = [
       'https://www.googleapis.com/auth/userinfo.email',
@@ -20,7 +18,7 @@ OAUTH_SCOPES = [
 DRIVE_RW_SCOPE = 'https://www.googleapis.com/auth/drive'
 DRIVE_RO_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 
-REDIRECT_URI='urn:ietf:wg:oauth:2.0:oob'
+REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 
 class GoogleDrive(object):
     def __init__(self,
@@ -34,6 +32,8 @@ class GoogleDrive(object):
         self.scopes = OAUTH_SCOPES
         self.session = requests.Session()
         self.token = None
+        self.code = None
+        self._validate_response = None
 
         if scopes is not None:
             self.scopes.extend(scopes)
@@ -97,14 +97,12 @@ class GoogleDrive(object):
             'response_type': 'code',
             }
 
-        url = '%s?%s' % ('%s/auth' % OAUTH_URI, urllib.urlencode(params))
+        url = '%s?%s' % ('%s/auth' % OAUTH_URI, urllib.parse.urlencode(params))
 
-        print 'Point your browser at the following URL and then '
-        print 'enter the authorization code at the prompt:'
-        print
-        print url
-        print
-        code = raw_input('Enter code: ')
+        print('Point your browser at the following URL and then ')
+        print('enter the authorization code at the prompt:')
+        print("\n{URL}\n".format(URL=url))
+        code = input('Enter code: ')
         self.code = code
         r = requests.post('%s/token' % OAUTH_URI, {
             'code': code,
@@ -113,7 +111,7 @@ class GoogleDrive(object):
             'redirect_uri': REDIRECT_URI,
             'grant_type': 'authorization_code',
             })
-        
+
         if not r:
             raise ValueError('failed to authenticate')
 
@@ -123,14 +121,13 @@ class GoogleDrive(object):
     def store_credentials(self):
         '''Write credentials to file.'''
         with open(self.credentials, 'w') as fd:
-            fd.write(yaml.safe_dump(self.token, encoding='utf-8',
-                default_flow_style=False))
+            fd.write(yaml.safe_dump(self.token))
 
     def load_credentials(self):
         '''Read credentials from file.'''
         try:
             with open(self.credentials) as fd:
-                self.token = yaml.load(fd)
+                self.token = yaml.safe_load(fd)
         except IOError:
             pass
 
@@ -166,8 +163,7 @@ class GoogleDrive(object):
         r = self.session.get('%s/files/%s/revisions' % (
             DRIVE_URI, fid)).json()
 
-        for rev in r['items']:
-            yield rev
+        return r['items']
 
 if __name__ == '__main__':
     cfg = yaml.load(open('gd.conf'))
