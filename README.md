@@ -1,5 +1,6 @@
 ## Features and Changes
 
+- Python 2.x version. For Python 3.x version see the other branch
 - Fixed mime-type issuse for txt output
 - Fixed Git update glitches (only newer revisions are commited)
 - Added possibility to use full URL insead of DocID
@@ -7,8 +8,9 @@
 - Added possibility to latexmk preview
 - Added possibility to download more format at once 
 - Added Git and LaTeX friendly output formatting
-- Added continous updates and previews (default: 5 sec)
-- Future plans: Python 3.x version
+- Added continous updates and previews (can be set as parameter. default: 5 sec)
+- Fixed double writing in the previous version of program
+- Some performance improvements
 
 ## Synopsis
 

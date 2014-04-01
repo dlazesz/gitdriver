@@ -2,21 +2,20 @@
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
 NAME_OF_FILE = 'content.{extension}'
-SLEEP_TIME = 5
 
 import os
-import sys
 import argparse
 import subprocess
 import yaml
 
-import time
 import re
+import codecs
+from time import sleep
+from datetime import datetime
 from bs4 import BeautifulSoup as bs
 
 # For unauthed download
 import urllib2
-import codecs
 
 from drive import GoogleDrive, DRIVE_RW_SCOPE
 
@@ -36,6 +35,8 @@ def parse_args():
             help='No OAuth 2.0 authentication (very limited usage)')
     p.add_argument('--preview', '-P', action='store_true',
             help='Compile latex file to PDF and preview')
+    p.add_argument('--delay', '-D', dest='delay', default=5,
+            help='Time is seconds to check for new version (default: 5)')
     p.add_argument('--url', '-U', action='store_true',
             help='Use URL instead of docid')
     p.add_argument('docid')
@@ -54,25 +55,24 @@ def get_last_commit_date():
                          stderr=subprocess.PIPE)
     out, _ = p.communicate() # 'revision from 2014-03-10T12:53:00.799Z'
     if out:
-        return time.strptime(out.strip(), 'revision from %Y-%m-%dT%H:%M:%S.%fZ')
+        return datetime.strptime(out.strip(),
+                                  'revision from %Y-%m-%dT%H:%M:%S.%fZ')
     else:
-        return time.ctime(0)
+        return datetime.min
 
-def reformat_file(filename):
+def reformat_and_write_file(filename, data):
     # Strip BOM for latex
-    if filename.endswith('txt'):
-        with open(filename) as fd:
-            text = fd.read()
-            if text.startswith(codecs.BOM_UTF8):
-                text = text[len(codecs.BOM_UTF8):]
-        with open(filename, 'w') as fd:
-            fd.write(text)
+    if filename.endswith('.txt'):
+        with codecs.open(filename, 'w', encoding='UTF-8') as fd:
+            fd.write(data.decode('UTF-8-SIG'))
     # Add newlines to HTML source (Git friendly)
-    elif filename.endswith('html'):
-        with open(filename) as fd:
-            html = bs(fd.read()).prettify()
-        with codecs.open(filename, 'w', 'UTF-8') as fd:
-            fd.write(html)
+    elif filename.endswith('.html'):
+        with codecs.open(filename, 'w', encoding='UTF-8') as fd:
+            fd.write(bs(data.decode('UTF-8')).prettify())
+    # Write binary format
+    else:
+        with open(filename, 'wb') as fd:
+            fd.write(data)
 
 def git_main(gd, docid, mime_types_to_download, raw, preview):
     # Establish our credentials.
@@ -91,12 +91,16 @@ def git_main(gd, docid, mime_types_to_download, raw, preview):
     last_commit_date = get_last_commit_date()
 
     # Iterate over the revisions (from oldest to newest).
-    for rev in gd.revisions(docid):
-        if time.strptime(rev['modifiedDate'],
+    revisions = gd.revisions(docid)
+    if datetime.strptime(revisions[-1]['modifiedDate'],
                          '%Y-%m-%dT%H:%M:%S.%fZ') > last_commit_date:
-            for ext, mime_type in mime_types_to_download.items():
-                filename = NAME_OF_FILE.format(extension=ext)
-                with open(filename, 'w') as fd:
+        for rev in revisions:
+            if datetime.strptime(rev['modifiedDate'],
+                             '%Y-%m-%dT%H:%M:%S.%fZ') > last_commit_date:
+                for ext, mime_type in mime_types_to_download.items():
+                    filename = NAME_OF_FILE.format(extension=ext)
+                    # We write a binary stream to memory for further processing
+                    output = bytearray()
                     if 'exportLinks' in rev and not raw:
                         # If the file provides an 'exportLinks' dictionary,
                         # download the requested MIME type.
@@ -107,20 +111,20 @@ def git_main(gd, docid, mime_types_to_download, raw, preview):
                     else:
                         raise KeyError('unable to download revision')
 
-                    # Write file content into local file.
+                    # Write file content into memory
                     for chunk in r.iter_content():
-                        fd.write(chunk)
-                # Reformat after writing
-                reformat_file(filename)
+                        output.extend(chunk)
+                    # Reformat after writing
+                    reformat_and_write_file(filename, output)
 
-                subprocess.call(['git', 'add', filename])
-            # Commit changes to repository.
-            subprocess.call(['git', 'commit', '-m',
-                'revision from {date}'.format(date=rev['modifiedDate'])])
-    if preview and last_commit_date < get_last_commit_date():
-        filename = NAME_OF_FILE.format(extension='txt')
-        subprocess.call(['git', 'checkout', filename])
-        latex_preview(filename)
+                    subprocess.call(['git', 'add', filename])
+                # Commit changes to repository.
+                subprocess.call(['git', 'commit', '-m',
+                    'revision from {date}'.format(date=rev['modifiedDate'])])
+        if preview:
+            filename = NAME_OF_FILE.format(extension='txt')
+            subprocess.call(['git', 'checkout', filename])
+            latex_preview(filename)
     print('Done.')
     os.chdir(orig_dir)
 
@@ -148,16 +152,11 @@ To fix this, visit the doc in your web browser,
 and use Share >> Change... >> Anyone with Link >> can view.
 """.format(docID=docid))
 
-        # download the file
+        # download the file to memory
         raw = conn.read()
-        encoding = conn.headers['content-type'].split('charset=')[-1]
-        data = unicode(raw, encoding)
         conn.close()
-        with codecs.open(filename, 'w', 'UTF-8') as fd:
-            fd.write(data)
-
         # Reformat after writing
-        reformat_file(filename)
+        reformat_and_write_file(filename, raw)
 
     if preview:
         latex_preview(NAME_OF_FILE.format(extension='txt'))
@@ -165,7 +164,7 @@ and use Share >> Change... >> Anyone with Link >> can view.
 if __name__ == '__main__':
     opts = parse_args()
     if not opts.noauth:
-        cfg = yaml.load(open(opts.config))
+        cfg = yaml.safe_load(codecs.open(opts.config, 'r', encoding='UTF-8'))
         gd = GoogleDrive(
                 client_id=cfg['googledrive']['client id'],
                 client_secret=cfg['googledrive']['client secret'],
@@ -202,4 +201,4 @@ if __name__ == '__main__':
             unauth_main(docid, mime_types_to_download, opts.preview)
         else:
             git_main(gd, docid, mime_types_to_download, opts.raw, opts.preview)
-        time.sleep(SLEEP_TIME)
+        sleep(float(opts.delay))
